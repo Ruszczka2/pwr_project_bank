@@ -1,0 +1,116 @@
+---
+title: "EDA"
+format: html
+---
+
+Pobranie danych
+
+```{r}
+dane <- read.csv("data/cs-training.csv")
+```
+
+Poznanie danych
+
+```{r}
+dim(dane)
+
+str(dane)
+```
+
+```{r}
+head(dane)
+```
+
+```{r}
+summary(dane)
+```
+
+
+Zapisuje
+
+```{r}
+colSums(is.na(dane))
+```
+
+```{r}
+library(ggplot2)
+
+for (kolumna in colnames(dane)) {
+  if (is.numeric(dane[[kolumna]])) {
+    plot <- ggplot(dane, aes(x = .data[[kolumna]])) +
+      geom_histogram(fill = "steelblue", alpha = 0.5) +
+      theme_minimal()
+    print(plot)
+  }
+}
+```
+
+```{r}
+colnames(dane)
+```
+
+```{r}
+for (kolumna in colnames(dane)) {
+  if (is.numeric(dane[[kolumna]])) {
+    plot <- ggplot(dane, aes(x = "", y = .data[[kolumna]])) +
+      geom_boxplot(fill = "steelblue") +
+      theme_minimal() +
+      labs(title = paste("Rozkład:", kolumna), y = kolumna, x = "")
+    
+    print(plot)
+  }
+}
+```
+
+Wnioski:
+- Dane odstające dla wielu kolumn
+- Niezbilanoswanie danych
+
+
+--- tutaj trzeba usunąć outliery do dalszej analizy ---
+
+
+
+```{r}
+for (kolumna in colnames(dane)) {
+  if (is.numeric(dane[[kolumna]]) && kolumna != "SeriousDlqin2yrs") {
+    
+    p <- ggplot(dane, aes(x = .data[[kolumna]], fill = as.factor(SeriousDlqin2yrs))) +
+      # after_stat(density) sprawia, że wykres jest znormalizowany
+      geom_histogram(aes(y = after_stat(density)), 
+                     bins = 50, 
+                     alpha = 0.5,           # Przezroczystość, żeby widzieć obie grupy
+                     position = "identity") + # Nakładanie na siebie
+      theme_minimal() +
+      labs(title = paste("Znormalizowany rozkład:", kolumna),
+           x = kolumna,
+           y = "Gęstość (Prawdopodobieństwo)",
+           fill = "SeriousDlqin2yrs")
+    
+    print(p)
+  }
+}
+```
+
+
+
+
+
+
+```{r}
+for (kolumna in colnames(dane)) {
+  if (is.numeric(dane[[kolumna]]) && kolumna != "SeriousDlqin2yrs") {
+    plot <- ggplot(dane, aes(x = as.factor(SeriousDlqin2yrs), y = .data[[kolumna]])) +
+      geom_boxplot(fill = "steelblue") +
+      theme_minimal() +
+      labs(title = paste("Rozkład:", kolumna), y = "Wartość", x = "SeriousDlqin2yrs")
+    
+    print(plot)
+  }
+}
+```
+
+
+
+
+
