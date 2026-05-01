@@ -1,8 +1,11 @@
 library(shiny)
 
+df <- read.csv("data/cs-training.csv")
+
 ui <- fluidPage(
   tabsetPanel(
-    tabPanel("Wykresy"),
+    tabPanel("Wykresy",
+             selectInput(inputId = "wybor_kolumny", label = "Wybierz kolumnę", choices = names(df))),
     tabPanel("Kalkulator", 
              fluidRow(
               column(6, 
