@@ -1,7 +1,10 @@
 library(shiny)
 
 ui <- fluidPage(
-  #wyglad
+  tabsetPanel(
+    tabPanel("Wykresy"),
+    tabPanel("Kalkulator"),
+  )
 )
 
 server <- function(input, output) {
