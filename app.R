@@ -17,7 +17,7 @@ ui <- fluidPage(
               numericInput(inputId = "NumberOfTime60-89DaysPastDueNotWorse", label = "Opóźnienia 60-89 dni", value = 0),
               numericInput(inputId = "NumberOfTimes90DaysLate", label = "Opóźnienia 90+ dni", value = 0),
               actionButton(inputId = "predic-button", label = "Oblicz ryzyko")),
-              column(6, )
+              column(6, textOutput(outputId = "wynik"))
              )
     ))
 )
