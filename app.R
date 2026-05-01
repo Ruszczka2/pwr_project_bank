@@ -15,7 +15,8 @@ ui <- fluidPage(
               numericInput(inputId = "NumberRealEstateLoansOrLines", label = "Liczba kredytów hipotecznych", value = 0),
               numericInput(inputId = "NumberOfTime30-59DaysPastDueNotWorse", label = "Opóźnienia 30-59 dni", value = 0),
               numericInput(inputId = "NumberOfTime60-89DaysPastDueNotWorse", label = "Opóźnienia 60-89 dni", value = 0),
-              numericInput(inputId = "NumberOfTimes90DaysLate", label = "Opóźnienia 90+ dni", value = 0)),
+              numericInput(inputId = "NumberOfTimes90DaysLate", label = "Opóźnienia 90+ dni", value = 0),
+              actionButton(inputId = "predic-button", label = "Oblicz ryzyko")),
               column(6, )
              )
     ))
