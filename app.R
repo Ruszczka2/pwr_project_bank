@@ -5,7 +5,8 @@ df <- read.csv("data/cs-training.csv")
 ui <- fluidPage(
   tabsetPanel(
     tabPanel("Wykresy",
-             selectInput(inputId = "wybor_kolumny", label = "Wybierz kolumnę", choices = names(df))),
+             selectInput(inputId = "wybor_kolumny", label = "Wybierz kolumnę", choices = names(df)),
+             plotOutput(outputId = "wykres")),
     tabPanel("Kalkulator", 
              fluidRow(
               column(6, 
@@ -32,6 +33,7 @@ server <- function(input, output) {
   output$wynik <- renderText({
     wynik()
   })
+  output$wykres <-renderPlot ({hist(df[[input$wybor_kolumny]])})
 }
 
 shinyApp(ui, server)
