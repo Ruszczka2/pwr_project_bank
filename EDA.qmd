@@ -25,7 +25,6 @@ head(dane)
 summary(dane)
 ```
 
-
 Zapisuje
 
 ```{r}
@@ -80,14 +79,9 @@ for (kolumna in colnames(dane)) {
 }
 ```
 
-Wnioski:
-- Dane odstające dla wielu kolumn
-- Niezbilanoswanie danych
-
+Wnioski: - Dane odstające dla wielu kolumn - Niezbilanoswanie danych
 
 --- tutaj trzeba usunąć outliery do dalszej analizy ---
-
-
 
 ```{r}
 for (kolumna in colnames(dane)) {
@@ -110,11 +104,6 @@ for (kolumna in colnames(dane)) {
 }
 ```
 
-
-
-
-
-
 ```{r}
 for (kolumna in colnames(dane)) {
   if (is.numeric(dane[[kolumna]]) && kolumna != "SeriousDlqin2yrs") {
@@ -129,6 +118,87 @@ for (kolumna in colnames(dane)) {
 ```
 
 ```{r}
-is.na(as.logical(c("Tom",FALSE)))
+# --- Przygotowanie danych ---
+
+# Usunięcie identyfikatora, aby nie był traktowany jako cecha modelu
+if ("X" %in% colnames(dane)) {
+  dane$X <- NULL
+}
+
+# Uzupełnienie braków danych medianą
+dane$MonthlyIncome[is.na(dane$MonthlyIncome)] <- median(dane$MonthlyIncome, na.rm = TRUE)
+dane$NumberOfDependents[is.na(dane$NumberOfDependents)] <- median(dane$NumberOfDependents, na.rm = TRUE)
+
+dane$age[dane$age < 18] <- median(dane$age[dane$age >= 18], na.rm = TRUE)
+
+# Obsługa wartości odstających: przycięcie do 99. percentyla
+for (kolumna in colnames(dane)) {
+  if (is.numeric(dane[[kolumna]]) && kolumna != "SeriousDlqin2yrs") {
+    limit_gorny <- quantile(dane[[kolumna]], 0.99, na.rm = TRUE)
+    dane[[kolumna]][dane[[kolumna]] > limit_gorny] <- limit_gorny
+  }
+}
+
+# --- Podział na zbiór treningowy i testowy ---
+set.seed(123)
+indeksy <- sample(1:nrow(dane), 0.8 * nrow(dane))
+train_data <- dane[indeksy, ]
+test_data <- dane[-indeksy, ]
 ```
 
+```{r}
+# --- Oversampling SMOTE ---
+# Wykorzystanie pakietu smotefamily
+if (!require(smotefamily)) install.packages("smotefamily")
+library(smotefamily)
+
+features_train <- train_data[, -which(names(train_data) == "SeriousDlqin2yrs")]
+target_train <- train_data$SeriousDlqin2yrs
+
+# Parametr K=5 dla KNN w SMOTE
+smote_result <- SMOTE(features_train, target_train, K = 5, dup_size = 0)
+train_smote <- smote_result$data
+
+# smotefamily automatycznie zmienia nazwę zmiennej objaśnianej na 'class' w formacie znakowym
+colnames(train_smote)[ncol(train_smote)] <- "SeriousDlqin2yrs"
+train_smote$SeriousDlqin2yrs <- as.numeric(train_smote$SeriousDlqin2yrs)
+```
+
+```{r}
+# --- Model XGBoost ---
+if (!require(xgboost)) install.packages("xgboost")
+library(xgboost)
+
+# Przygotowanie struktur danych dla XGBoost (xgb.DMatrix)
+# Zbiór treningowy (po SMOTE)
+dtrain <- xgb.DMatrix(
+  data = as.matrix(train_smote[, -which(names(train_smote) == "SeriousDlqin2yrs")]),
+  label = train_smote$SeriousDlqin2yrs
+)
+
+# Zbiór testowy
+dtest <- xgb.DMatrix(
+  data = as.matrix(test_data[, -which(names(test_data) == "SeriousDlqin2yrs")]),
+  label = test_data$SeriousDlqin2yrs
+)
+
+# Parametry optymalizowane pod kątem AUC (istotne przy niezbalansowanych danych oceny ryzyka)
+params <- list(
+  objective = "binary:logistic",
+  eval_metric = "auc",
+  max_depth = 6,
+  eta = 0.1
+)
+
+# Trenowanie modelu
+xgb_model <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = 100,
+  watchlist = list(train = dtrain, test = dtest),
+  print_every_n = 10
+)
+
+# Zapis pliku modelu dla aplikacji Shiny
+xgb.save(xgb_model, "model_credit_scoring.model")
+```
