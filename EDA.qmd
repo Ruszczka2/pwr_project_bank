@@ -46,6 +46,24 @@ for (kolumna in colnames(dane)) {
 ```
 
 ```{r}
+for (kolumna in colnames(dane)) {
+  if (is.numeric(dane[[kolumna]])) {
+    
+    # 1. Obliczenie 99. percentyla dla aktualnej kolumny
+    gora_xlim <- quantile(dane[[kolumna]], 0.995, na.rm = TRUE)
+    
+    # 2. Generowanie wykresu z dynamicznym limitem
+    plot <- ggplot(dane, aes(x = .data[[kolumna]])) +
+      geom_histogram(fill = "steelblue", color = "black", linewidth = 0.3, alpha = 0.8, binwidth = 1) +
+      coord_cartesian(xlim = c(NA, gora_xlim)) + # Sztywny limit górny
+      theme_minimal()
+    
+    print(plot)
+  }
+}
+```
+
+```{r}
 colnames(dane)
 ```
 
@@ -110,7 +128,7 @@ for (kolumna in colnames(dane)) {
 }
 ```
 
-
-
-
+```{r}
+is.na(as.logical(c("Tom",FALSE)))
+```
 
