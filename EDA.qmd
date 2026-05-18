@@ -11,6 +11,8 @@ dane <- read.csv("data/cs-training.csv")
 
 # Poznanie danych
 
+![ozaczenie danych](img/data_desc.png)
+
 ## Dane statystyczne
 
 ```{r}
@@ -31,7 +33,7 @@ summary(dane)
 colSums(is.na(dane))
 ```
 
-## Jednowymiarowa analiza
+## Wstępne histogramy
 
 ```{r}
 library(ggplot2)
@@ -48,9 +50,12 @@ for (kolumna in colnames(dane)) {
 }
 ```
 
-Wnioski: - Dane odstające dla wielu kolumn - Niezbilanoswanie danych
+**Wnioski**:
 
---- tutaj trzeba usunąć outliery do dalszej analizy ---
+- Dane odstające dla wielu kolumn
+- Niezbilanoswanie danych
+- Istniejące braki danych
+- Błędny wiek (poniżej 18 lat)
 
 # Analiza
 
@@ -75,6 +80,23 @@ df_cleaned <- as.data.frame(lapply(dane, function(x) {
 saveRDS(df_cleaned, "data/cs-cleaned.rds")
 dane <- readRDS("data/cs-cleaned.rds")
 
+```
+
+## Analiza jednowymiarowa
+
+```{r}
+library(ggplot2)
+
+colnames(dane)
+
+for (kolumna in colnames(dane)) {
+  if (is.numeric(dane[[kolumna]])) {
+    plot <- ggplot(dane, aes(x = .data[[kolumna]])) +
+      geom_histogram(fill = "steelblue", color = "black", linewidth = 0.3, alpha = 0.8) +
+      theme_minimal()
+    print(plot)
+  }
+}
 ```
 
 ## Analiza wielowymiarowa
@@ -118,15 +140,8 @@ for (kolumna in colnames(dane)) {
 ```{r}
 library(corrplot)
 
-# Obliczenie macierzy
-macierz_kor <- cor(df, use = "complete.obs")
+macierz_kor <- cor(dane, use = "complete.obs")
 
-# Skrócenie nazw w macierzy (opcjonalnie, ale bardzo pomaga)
-# Możesz użyć skrótów lub po prostu numerów kolumn
-#colnames(macierz_kor) <- paste0("V", 1:ncol(macierz_kor))
-#rownames(macierz_kor) <- paste0("V", 1:ncol(macierz_kor))
-
-# Wizualizacja z poprawionymi parametrami
 corrplot(macierz_kor, 
          method = "color", 
          type = "lower",
@@ -134,7 +149,7 @@ corrplot(macierz_kor,
          tl.srt = 20,
          tl.col = "black",
          addCoef.col = "black",
-         number.cex = 0.5) # Zmniejszenie czcionki liczb wewnątrz macierzy
+         number.cex = 0.5)
 ```
 
 # Proces tworzenia modelu
@@ -151,7 +166,6 @@ test_data <- dane[-indeksy, ]
 ## Oversampling SMOTE
 
 ```{r}
-if (!require(smotefamily)) install.packages("smotefamily")
 library(smotefamily)
 
 features_train <- train_data[, -which(names(train_data) == "SeriousDlqin2yrs")]
@@ -171,7 +185,6 @@ train_smote$SeriousDlqin2yrs <- as.numeric(train_smote$SeriousDlqin2yrs)
 ## Model XGBoost
 
 ```{r}
-if (!require(xgboost)) install.packages("xgboost")
 library(xgboost)
 
 features_test_scaled <- scale(test_data[, -which(names(test_data) == "SeriousDlqin2yrs")], 
