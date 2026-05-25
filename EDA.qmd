@@ -75,16 +75,23 @@ dane$NumberOfDependents[is.na(dane$NumberOfDependents)] <- median(dane$NumberOfD
 ## Podział na zbiór treningowy i testowy
 
 ```{r}
+library(caret)
+
 set.seed(42)
-indeksy <- sample(1:nrow(dane), 0.85 * nrow(dane))
-train_data <- dane[indeksy, ]
-test_data <- dane[-indeksy, ]
+
+idx_train <- createDataPartition(dane$SeriousDlqin2yrs, p = 0.80, list = FALSE)
+train_data <- dane[idx_train, ]
+test_data  <- dane[-idx_train, ]
+
+prop.table(table(train_data$SeriousDlqin2yrs))
+prop.table(table(valid_data$SeriousDlqin2yrs))
+prop.table(table(test_data$SeriousDlqin2yrs))
 ```
 
 ## Przygotowanie danych pod analize
 
 ```{r}
-dane <- as.data.frame(lapply(train_data, function(x) {
+dane_analiza <- as.data.frame(lapply(train_data, function(x) {
   if(is.numeric(x)) {
     limit <- quantile(x, 0.99, na.rm = TRUE)
     x[x > limit] <- limit
@@ -292,6 +299,9 @@ xgb_model <- xgb.train(
 
 xgb.save(xgb_model, "model_credit_scoring_cv.model")
 ```
+
+## Wyniki i krzywa pr
+
 ```{r}
 library(ROCR)
 library(ggplot2)
