@@ -219,3 +219,64 @@ xgb_model <- xgb.train(
 xgb.save(xgb_model, "model_credit_scoring.model")
 saveRDS(list(center = train_center, scale = train_scale), "scaling_params.rds")
 ```
+
+```{r}
+library(ROCR)
+library(ggplot2)
+library(caret)
+library(xgboost)
+
+# --- 1) Przygotuj test w tej samej postaci jak przy treningu ---
+# (czyli: skalowanie testu parametrami z treningu)
+
+features_test <- test_data[, setdiff(names(test_data), "SeriousDlqin2yrs")]
+
+features_test_scaled <- scale(
+  features_test,
+  center = train_center,
+  scale  = train_scale
+)
+
+dtest_matrix <- xgb.DMatrix(data = as.matrix(features_test_scaled))
+
+# --- 2) Predykcja ---
+preds <- predict(xgb_model, dtest_matrix)
+
+# --- 3) Krzywa Precision-Recall ---
+pred_obj <- ROCR::prediction(preds, test_data$SeriousDlqin2yrs)
+perf_pr  <- ROCR::performance(pred_obj, "prec", "rec")
+
+df_pr <- data.frame(
+  Recall    = perf_pr@x.values[[1]],
+  Precision = perf_pr@y.values[[1]]
+)
+df_pr <- na.omit(df_pr)
+
+# --- 4) Punkt dla wybranego progu (threshold) ---
+thresh <- 0.5
+preds_class <- ifelse(preds >= thresh, 1, 0)
+
+# recall = TP / (TP + FN)
+pt_rec <- sum(preds_class == 1 & test_data$SeriousDlqin2yrs == 1) /
+  sum(test_data$SeriousDlqin2yrs == 1)
+
+# precision = TP / (TP + FP)
+pt_prec <- sum(preds_class == 1 & test_data$SeriousDlqin2yrs == 1) /
+  sum(preds_class == 1)
+
+# --- 5) Wykres PR ---
+ggplot(df_pr, aes(x = Recall, y = Precision)) +
+  geom_line(color = "blue", linewidth = 1) +
+  geom_point(aes(x = pt_rec, y = pt_prec), color = "red", size = 3) +
+  theme_minimal() +
+  labs(title = sprintf("Krzywa Precision-Recall (próg = %.2f)", thresh))
+
+# --- 6) Confusion matrix dla tego samego progu ---
+conf_matrix <- confusionMatrix(
+  data = factor(preds_class, levels = c(0, 1)),
+  reference = factor(test_data$SeriousDlqin2yrs, levels = c(0, 1)),
+  positive = "1"
+)
+
+print(conf_matrix)
+```
