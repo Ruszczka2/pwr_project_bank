@@ -2,10 +2,8 @@ library(shiny)
 library(xgboost)
 
 df <- readRDS("data/cs-cleaned.rds")
-model <- xgb.load("model_credit_scoring.model")
-
-# Wczytanie parametrów skalowania wygenerowanych podczas treningu
-skalowanie <- readRDS("scaling_params.rds")
+model <- xgb.load("model_credit_scoring_cv.model")
+waga_spw <- readRDS(file = "spw_value.rds")
 
 ui <- fluidPage(
   tabsetPanel(
@@ -49,7 +47,7 @@ server <- function(input, output) {
   
   wynik_predykcji <- eventReactive(input$predic_button, {
     
-    if (input$age < 0 || input$age > 109) {
+    if (input$age < 18 || input$age > 109) {
       return("Nieprawidłowa wartość w kolumnie 'Wiek'. Prawidłowy zakres: 0-109.")
     }
     if (input$MonthlyIncome < 0 || input$MonthlyIncome > 3008750) {
@@ -93,15 +91,13 @@ server <- function(input, output) {
       NumberOfDependents = input$NumberOfDependents
     )
     
-    # Zabezpieczenie poprawnej kolejności kolumn zgodnie ze zbiorem treningowym
-    nowe_dane <- nowe_dane[, names(skalowanie$center), drop = FALSE]
+    nowe_dane[] <- lapply(nowe_dane, as.numeric)
     
-    # Standaryzacja nowych danych wejściowych
-    nowe_dane_scaled <- scale(nowe_dane, center = skalowanie$center, scale = skalowanie$scale)
+    dmatrix_input <- xgb.DMatrix(data = as.matrix(nowe_dane))
     
-    dmatrix_input <- xgb.DMatrix(data = as.matrix(nowe_dane_scaled))
+    prob_raw <- predict(model, dmatrix_input)
     
-    prob <- predict(model, dmatrix_input)
+    prob <- prob_raw / (prob_raw + waga_spw * (1 - prob_raw))
     
     paste0("Prawdopodobieństwo niewypłacalności: ", round(prob * 100, 2), "%")
   })

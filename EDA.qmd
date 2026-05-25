@@ -11,7 +11,7 @@ dane <- read.csv("data/cs-training.csv")
 
 # Poznanie danych
 
-![ozaczenie danych](img/data_desc.png)
+![oznaczenie danych](img/data_desc.png)
 
 ## Dane statystyczne
 
@@ -57,9 +57,11 @@ for (kolumna in colnames(dane)) {
 - Istniejące braki danych
 - Błędny wiek (poniżej 18 lat)
 
-# Analiza
 
-## Przygotowanie danych
+
+# Przygotowanie danych
+
+## Czyszczenie danych
 
 ```{r}
 dane$X <- NULL
@@ -68,8 +70,21 @@ dane <- subset(dane, age >= 18)
 
 dane$MonthlyIncome[is.na(dane$MonthlyIncome)] <- median(dane$MonthlyIncome, na.rm = TRUE)
 dane$NumberOfDependents[is.na(dane$NumberOfDependents)] <- median(dane$NumberOfDependents, na.rm = TRUE)
+```
 
-df_cleaned <- as.data.frame(lapply(dane, function(x) {
+## Podział na zbiór treningowy i testowy
+
+```{r}
+set.seed(42)
+indeksy <- sample(1:nrow(dane), 0.85 * nrow(dane))
+train_data <- dane[indeksy, ]
+test_data <- dane[-indeksy, ]
+```
+
+## Przygotowanie danych pod analize
+
+```{r}
+dane <- as.data.frame(lapply(train_data, function(x) {
   if(is.numeric(x)) {
     limit <- quantile(x, 0.99, na.rm = TRUE)
     x[x > limit] <- limit
@@ -77,10 +92,10 @@ df_cleaned <- as.data.frame(lapply(dane, function(x) {
   return(x)
 }))
 
-saveRDS(df_cleaned, "data/cs-cleaned.rds")
-dane <- readRDS("data/cs-cleaned.rds")
-
+saveRDS(dane, "data/cs-cleaned.rds")
 ```
+
+# Analiza
 
 ## Analiza jednowymiarowa
 
@@ -100,6 +115,8 @@ for (kolumna in colnames(dane)) {
 ```
 
 ## Analiza wielowymiarowa
+
+Histogramy
 
 ```{r}
 for (kolumna in colnames(dane)) {
@@ -121,6 +138,8 @@ for (kolumna in colnames(dane)) {
   }
 }
 ```
+
+Boxploty
 
 ```{r}
 for (kolumna in colnames(dane)) {
@@ -152,128 +171,160 @@ corrplot(macierz_kor,
          number.cex = 0.5)
 ```
 
-# Proces tworzenia modelu
-
-Podział na zbiór treningowy i testowy
-
-```{r}
-set.seed(42)
-indeksy <- sample(1:nrow(dane), 0.8 * nrow(dane))
-train_data <- dane[indeksy, ]
-test_data <- dane[-indeksy, ]
-```
+# Tworzenie modelu XGBoost
 
 ## Oversampling SMOTE
 
+"scale_pos_weight [default=1]
+
+Control the balance of positive and negative weights, useful for unbalanced classes. A typical value to consider: sum(negative instances) / sum(positive instances)."
+
 ```{r}
-library(smotefamily)
-
-features_train <- train_data[, -which(names(train_data) == "SeriousDlqin2yrs")]
-target_train <- train_data$SeriousDlqin2yrs
-
-features_train_scaled <- scale(features_train)
-train_center <- attr(features_train_scaled, "scaled:center")
-train_scale <- attr(features_train_scaled, "scaled:scale")
-
-smote_result <- SMOTE(as.data.frame(features_train_scaled), target_train, K = 5, dup_size = 0)
-train_smote <- smote_result$data
-
-colnames(train_smote)[ncol(train_smote)] <- "SeriousDlqin2yrs"
-train_smote$SeriousDlqin2yrs <- as.numeric(train_smote$SeriousDlqin2yrs)
+# library(smotefamily)
+# 
+# features_train <- train_data[, -which(names(train_data) == "SeriousDlqin2yrs")]
+# target_train <- train_data$SeriousDlqin2yrs
+# 
+# features_train_scaled <- scale(features_train)
+# train_center <- attr(features_train_scaled, "scaled:center")
+# train_scale <- attr(features_train_scaled, "scaled:scale")
+# 
+# smote_result <- SMOTE(as.data.frame(features_train_scaled), target_train, K = 5, dup_size = 0)
+# train_smote <- smote_result$data
+# 
+# colnames(train_smote)[ncol(train_smote)] <- "SeriousDlqin2yrs"
+# train_smote$SeriousDlqin2yrs <- as.numeric(train_smote$SeriousDlqin2yrs)
 ```
 
-## Model XGBoost
+## Przygotowanie danych
 
 ```{r}
 library(xgboost)
 
-features_test_scaled <- scale(test_data[, -which(names(test_data) == "SeriousDlqin2yrs")], 
-                              center = train_center, 
-                              scale = train_scale)
-
 dtrain <- xgb.DMatrix(
-  data = as.matrix(train_smote[, -which(names(train_smote) == "SeriousDlqin2yrs")]),
-  label = train_smote$SeriousDlqin2yrs
+  data = as.matrix(train_data[, -which(names(train_data) == "SeriousDlqin2yrs")]),
+  label = train_data$SeriousDlqin2yrs
 )
 
 dtest <- xgb.DMatrix(
-  data = as.matrix(features_test_scaled),
+  data = as.matrix(test_data[, -which(names(test_data) == "SeriousDlqin2yrs")]),
   label = test_data$SeriousDlqin2yrs
 )
+```
+
+## Params i Cross-Validation
+
+```{r}
+sum_negative <- sum(train_data$SeriousDlqin2yrs == 0)
+sum_positive <- sum(train_data$SeriousDlqin2yrs == 1)
+spw_value <- sum_negative / sum_positive
+saveRDS(spw_value, file = "spw_value.rds")
 
 params <- list(
   objective = "binary:logistic",
-  eval_metric = "auc",
   max_depth = 6,
-  eta = 0.1
+  eta = 0.1,
+  eval_metric = c("auc", "aucpr"),
+  scale_pos_weight = spw_value
 )
 
-xgb_model <- xgb.train(
+cv_results <- xgb.cv(
   params = params,
   data = dtrain,
   nrounds = 100,
+  nfold = 5,
+  stratified = TRUE,
+  early_stopping_rounds = 10,
+  maximize = TRUE,              # Wskazuje, że wyższe wartości AUC/AUCPR są lepsze
+  print_every_n = 10,
+  verbose = TRUE
+)
+```
+
+## Walidacja
+
+```{r}
+best_iteration <- which.max(cv_results$evaluation_log$test_aucpr_mean)
+
+# Wartości dla optymalnej iteracji
+best_auc <- cv_results$evaluation_log$test_auc_mean[best_iteration]
+best_aucpr <- cv_results$evaluation_log$test_aucpr_mean[best_iteration]
+
+cat(sprintf("Optymalna iteracja (wg AUCPR): %d\n", best_iteration))
+cat(sprintf("Średnie AUC (test) w %d iteracji: %.4f\n", best_iteration, best_auc))
+cat(sprintf("Średnie AUCPR (test) w %d iteracji: %.4f\n", best_iteration, best_aucpr))
+```
+## Wykres AUCPR
+
+```{r}
+library(ggplot2)
+
+# Ekstrakcja logów z wyników CV
+log_data <- cv_results$evaluation_log
+
+# Rysowanie krzywej uczenia dla AUCPR
+ggplot(log_data, aes(x = iter)) +
+  geom_line(aes(y = train_aucpr_mean, color = "Zbiór treningowy"), linewidth = 1) +
+  geom_line(aes(y = test_aucpr_mean, color = "Zbiór walidacyjny (CV)"), linewidth = 1) +
+  geom_vline(xintercept = best_iteration, linetype = "dashed", color = "black") +
+  annotate("text", x = best_iteration-25, y = max(log_data$train_aucpr_mean), 
+           label = sprintf("Optymalna iteracja (%d)", best_iteration), hjust = -0.1) +
+  labs(
+    title = "Krzywa uczenia XGBoost - AUCPR",
+    x = "Liczba iteracji (drzew)",
+    y = "Średnie AUCPR",
+    color = "Zbiór"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("Zbiór treningowy" = "blue", "Zbiór walidacyjny (CV)" = "red"))
+```
+
+## Trenowanie modelu i zapis
+
+```{r}
+xgb_model <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = best_iteration,
   watchlist = list(train = dtrain, test = dtest),
   print_every_n = 10
 )
 
-xgb.save(xgb_model, "model_credit_scoring.model")
-saveRDS(list(center = train_center, scale = train_scale), "scaling_params.rds")
+xgb.save(xgb_model, "model_credit_scoring_cv.model")
 ```
-
 ```{r}
 library(ROCR)
 library(ggplot2)
 library(caret)
-library(xgboost)
 
-# --- 1) Przygotuj test w tej samej postaci jak przy treningu ---
-# (czyli: skalowanie testu parametrami z treningu)
+features_test <- setdiff(names(test_data), "SeriousDlqin2yrs")
+dtest_matrix <- xgb.DMatrix(data = as.matrix(test_data[, features_test]))
 
-features_test <- test_data[, setdiff(names(test_data), "SeriousDlqin2yrs")]
+preds_raw <- predict(xgb_model, dtest_matrix)
+preds <- preds_raw / (preds_raw + spw_value * (1 - preds_raw))
 
-features_test_scaled <- scale(
-  features_test,
-  center = train_center,
-  scale  = train_scale
-)
+pred_obj <- prediction(preds, test_data$SeriousDlqin2yrs)
+perf <- performance(pred_obj, "prec", "rec")
 
-dtest_matrix <- xgb.DMatrix(data = as.matrix(features_test_scaled))
-
-# --- 2) Predykcja ---
-preds <- predict(xgb_model, dtest_matrix)
-
-# --- 3) Krzywa Precision-Recall ---
-pred_obj <- ROCR::prediction(preds, test_data$SeriousDlqin2yrs)
-perf_pr  <- ROCR::performance(pred_obj, "prec", "rec")
-
-df_pr <- data.frame(
-  Recall    = perf_pr@x.values[[1]],
-  Precision = perf_pr@y.values[[1]]
-)
+df_pr <- data.frame(Recall = perf@x.values[[1]], Precision = perf@y.values[[1]])
 df_pr <- na.omit(df_pr)
 
-# --- 4) Punkt dla wybranego progu (threshold) ---
-thresh <- 0.5
-preds_class <- ifelse(preds >= thresh, 1, 0)
+thresh <- 0.1
 
-# recall = TP / (TP + FN)
-pt_rec <- sum(preds_class == 1 & test_data$SeriousDlqin2yrs == 1) /
-  sum(test_data$SeriousDlqin2yrs == 1)
+thresh_class <- ifelse(preds > thresh, 1, 0)
+pt_rec <- mean(thresh_class[test_data$SeriousDlqin2yrs == 1])
+pt_prec <- sum(thresh_class == 1 & test_data$SeriousDlqin2yrs == 1) / sum(thresh_class == 1)
 
-# precision = TP / (TP + FP)
-pt_prec <- sum(preds_class == 1 & test_data$SeriousDlqin2yrs == 1) /
-  sum(preds_class == 1)
-
-# --- 5) Wykres PR ---
 ggplot(df_pr, aes(x = Recall, y = Precision)) +
   geom_line(color = "blue", linewidth = 1) +
-  geom_point(aes(x = pt_rec, y = pt_prec), color = "red", size = 3) +
+  annotate("point", x = pt_rec, y = pt_prec, color = "red", size = 4) +
   theme_minimal() +
-  labs(title = sprintf("Krzywa Precision-Recall (próg = %.2f)", thresh))
+  labs(title = sprintf("Krzywa Precision-Recall z progiem (%s)", thresh))
 
-# --- 6) Confusion matrix dla tego samego progu ---
+preds_class <- ifelse(preds > thresh, 1, 0)
+
 conf_matrix <- confusionMatrix(
-  data = factor(preds_class, levels = c(0, 1)),
+  data = factor(preds_class, levels = c(0, 1)), 
   reference = factor(test_data$SeriousDlqin2yrs, levels = c(0, 1)),
   positive = "1"
 )
